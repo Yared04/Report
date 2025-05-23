@@ -1,0 +1,32 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: report_db
+      POSTGRES_USER: report_user
+      POSTGRES_PASSWORD: report_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    ports:
+      - "5432:5432"
+
+  app:
+    build: .
+    command: gunicorn report.wsgi:application --bind 0.0.0.0:8000
+    volumes:
+      - .:/code
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      - DEBUG=1
+      - DJANGO_DB_HOST=db
+      - DJANGO_DB_NAME=report_db
+      - DJANGO_DB_USER=report_user
+      - DJANGO_DB_PASSWORD=report_pass
+
+volumes:
+  postgres_data:

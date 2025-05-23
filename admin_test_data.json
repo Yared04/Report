@@ -1,0 +1,15 @@
+[
+  {
+    "model": "users.customuser",
+    "pk": "123e4567-e89b-12d3-a456-426614174001",
+    "fields": {
+      "username": "admin",
+      "email": "admin@example.com",
+      "password": "pbkdf2_sha256$1000000$OdvW1XdDDy7ILuVMj5SOtd$tQrQxFH+iRN4oOL6XBcuElItd2nnt+IORwYJKrSR8Fo=",
+      "user_type": "SUPER_ADMIN",
+      "is_superuser": true,
+      "is_staff": true,
+      "is_active": true
+    }
+  }
+]
