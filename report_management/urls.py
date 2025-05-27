@@ -3,6 +3,7 @@ from .views import (
     NodeView,
     NodeDetailView,
     QueryView,
+    QueryExecutionViewSet,
 )
 from django.urls import path
 
@@ -19,5 +20,10 @@ urlpatterns = [
         "database/<uuid:database_id>/queries/",
         QueryView.as_view(),
         name="query-create-by-database",
+    ),
+    path(
+        "queries/<uuid:pk>/execute/",
+        QueryExecutionViewSet.as_view({"get": "execute"}),
+        name="query-execute",
     ),
 ]

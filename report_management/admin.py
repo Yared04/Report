@@ -10,11 +10,10 @@ class DatabaseAdmin(admin.ModelAdmin):
         "name",
         "host",
         "port",
-        "database",
         "organization",
     )  # Fields to display
     list_filter = ("organization",)  # Add filters for organization
-    search_fields = ("name", "description", "host", "database")  # Enable search
+    search_fields = ("name", "description", "host")  # Enable search; removed non-existent 'database' field
 
 
 @admin.register(Node)

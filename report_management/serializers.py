@@ -21,7 +21,7 @@ class DatabaseSerializer(serializers.ModelSerializer):
             "description",
             "host",
             "port",
-            "database",
+            "password",
             "username",
             "organization_id",
             "organization_name",

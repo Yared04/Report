@@ -8,12 +8,21 @@ from report_management.serializers import (
     NodeSerializer,
     QuerySerializer,
     DatabaseSerializer,
-)  # Import the serializers
+)
+from .utils import verify_database_connection, execute_sql_query  # Import utilities
 from rest_framework.generics import RetrieveAPIView
+from rest_framework import viewsets
+from rest_framework.decorators import action
+from django.http import HttpResponse
+import csv
+import io
+from drf_yasg.utils import swagger_auto_schema
+
 
 # Create your views here.
 
 
+@swagger_auto_schema(request_body=DatabaseSerializer)
 class DatabaseView(APIView):
     """
     View to manage database connections.
@@ -40,6 +49,35 @@ class DatabaseView(APIView):
         # Serializer's create method will use request.organization from context
         serializer = DatabaseSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
+            validated_data = serializer.validated_data
+            db_host = validated_data.get("host")
+            db_port = validated_data.get("port")
+            db_name = validated_data.get(
+                "name"
+            )  # This is the database name field from your model
+            db_user = validated_data.get("username")
+            db_password = validated_data.get(
+                "password"
+            )  # write_only=True, so it's in validated_data
+
+            # Verify database connection
+            can_connect = verify_database_connection(
+                host=db_host,
+                port=db_port,
+                dbname=db_name,
+                user=db_user,
+                password=db_password,
+            )
+
+            if not can_connect:
+                return Response(
+                    {
+                        "error": "Unable to connect to the database with the provided credentials. "
+                        "Please check the host, port, database name, username, and password."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -157,7 +195,10 @@ class NodeView(APIView):
             )
         serializer = NodeSerializer(
             data={
-                **request.data.dict(),
+                **{
+                    "name": request.data.get("name"),
+                    "description": request.data.get("description"),
+                },
                 "database": database_id,
                 "parent": request.data.get("parent_id", None),
             },
@@ -205,7 +246,15 @@ class QueryView(APIView):
         # Prepare data for the serializer
         # The 'database' field in the serializer expects the database ID.
         # The 'node' field (if provided) expects the node ID.
-        query_data = {**request.data.dict(), "database": str(database.id)}
+        query_data = {
+            **{
+                "name": request.data.get("name"),
+                "description": request.data.get("description"),
+                "sql_query": request.data.get("sql_query"),
+                "node": request.data.get("node"),
+            },
+            "database": str(database.id),
+        }
 
         serializer = QuerySerializer(
             data=query_data, context={"request": request, "database": database}
@@ -215,3 +264,74 @@ class QueryView(APIView):
             serializer.save()  # The serializer's create method will handle the rest
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet to execute a stored query and return results as CSV.
+    """
+
+    authentication_classes = [APIKeyAuthentication]
+    permission_classes = [IsOrganizationMember]
+    queryset = Query.objects.select_related("database").all()  # Base queryset
+    serializer_class = QuerySerializer
+
+    @action(detail=True, methods=["get"], url_path="execute")
+    def execute(self, request, pk=None):
+        """
+        Executes the specified query and returns the results as a CSV file.
+        """
+        try:
+            query_instance = self.get_object()  # Retrieves query by pk, handles 404
+        except Query.DoesNotExist:
+            return Response(
+                {"error": "Query not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Permission check is implicitly handled by get_object if queryset is filtered by org,
+        # or explicitly by IsOrganizationMember.has_object_permission
+        # Ensure the query's database belongs to the organization
+        if query_instance.database.organization != request.organization:
+            return Response(
+                {"error": "Access to this query is denied for your organization."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        db_config = query_instance.database
+
+        try:
+            column_names, data_rows = execute_sql_query(
+                host=db_config.host,
+                port=db_config.port,
+                dbname=db_config.name,
+                user=db_config.username,
+                password=db_config.password,
+                sql_query=query_instance.sql_query,
+            )
+
+            # Create CSV
+            csv_buffer = io.StringIO()
+            csv_writer = csv.writer(csv_buffer)
+
+            if column_names:
+                csv_writer.writerow(column_names)
+            if data_rows:
+                csv_writer.writerows(data_rows)
+
+            csv_buffer.seek(0)
+            response = HttpResponse(csv_buffer, content_type="text/csv")
+            response["Content-Disposition"] = (
+                f'attachment; filename="query_{query_instance.id}_results.csv"'
+            )
+            return response
+
+        except psycopg2.Error as e:
+            return Response(
+                {"error": f"Database error: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

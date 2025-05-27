@@ -13,7 +13,6 @@ class Database(BaseModel):
     description = models.TextField()
     host = models.CharField(max_length=255)
     port = models.IntegerField()
-    database = models.CharField(max_length=255)
     username = models.CharField(max_length=255)
     password = models.CharField(max_length=255)
     organization = models.ForeignKey(
