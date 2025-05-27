@@ -1,26 +1,35 @@
+from rest_framework.permissions import BasePermission
 from users.models import Organization
+from .models import Node # For isinstance check
 
-class IsOrganizationAdmin:
+class IsOrganizationMember(BasePermission):
     """
-    Custom permission to check if the user is an organization admin.
+    Custom permission to allow access if a valid API key for an organization is provided.
+    It also checks object-level permissions to ensure objects belong to the authenticated organization.
     """
+    message = "Invalid or missing API key, or insufficient permissions for the organization."
 
     def has_permission(self, request, view):
-        # Check if the user is authenticated and is an organization admin
-        apiKey = request.headers.get('x-api-key')
-        if not apiKey:
-            return False
-        try:
-            org = Organization.get_organization_from_api_key(apiKey)
-        except:
-            return False
-        if not Organization:
-            return False
-        if request.data.get('organization') != str(org.id):
-            return False
-        if request.method  == "GET":
+        # APIKeyAuthentication should have set request.auth to the Organization instance
+        # if authentication was successful.
+        if request.auth and isinstance(request.auth, Organization):
+            request.organization = request.auth # Make org easily accessible as request.organization
             return True
-        
-        if request.data.get('role') != 'admin':
+        return False
+
+    def has_object_permission(self, request, view, obj):
+        # Ensure request.organization is set (should be by has_permission)
+        if not hasattr(request, 'organization') or not request.organization:
             return False
-        return True
+
+        # Check if the object belongs to the authenticated organization
+        if hasattr(obj, 'organization_id'): # For models like Database
+            return obj.organization_id == request.organization.id
+        elif hasattr(obj, 'database') and hasattr(obj.database, 'organization_id'): # For Query model
+            return obj.database.organization_id == request.organization.id
+        elif isinstance(obj, Node):
+            # Nodes are not directly tied to an organization in the current model.
+            # Access is granted if the general organization authentication (API key) is valid.
+            # If Nodes need to be strictly scoped, an 'organization' ForeignKey should be added to the Node model.
+            return True
+        return False
