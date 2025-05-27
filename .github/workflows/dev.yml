@@ -56,14 +56,14 @@ jobs:
             
             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 923083696216.dkr.ecr.us-east-1.amazonaws.com
             
-            docker rm -f visualizer-2 || true
+            docker rm -f report-backend || true
 
             docker pull 923083696216.dkr.ecr.us-east-1.amazonaws.com/user-management-service:${{ github.run_number }}
             
             docker run -d \
               -p 3492:3492 \
               --network host \
-              --name visualizer-2 \
+              --name report-backend \
               -e DB_NAME=${{ secrets.DB_NAME_ }} \
               -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
               -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
