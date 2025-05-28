@@ -11,4 +11,4 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY . /code/
 
-CMD ["gunicorn", "report.wsgi:application", "--bind", "0.0.0.0:3493"]
+CMD ["python", "manage.py", "runserver", "0.0.0.0:3492"]

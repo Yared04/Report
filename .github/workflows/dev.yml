@@ -56,18 +56,57 @@ jobs:
             
             aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 923083696216.dkr.ecr.us-east-1.amazonaws.com
             
-            docker rm -f report-backend || true
+            # Stop and remove existing containers
+            docker rm -f report-backend report-db || true
+            
+            # Create a Docker network for the containers to communicate
+            docker network create report-network || true
+            
+            # Start the database container
+            docker run -d \
+              --name report-db \
+              --network report-network \
+              -e POSTGRES_DB=${{ secrets.DB_NAME }} \
+              -e POSTGRES_USER=${{ secrets.DB_USERNAME }} \
+              -e POSTGRES_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              -v postgres_data:/var/lib/postgresql/data/ \
+              -p 1433:5432 \
+              postgres:15
 
+            # Pull the latest image
             docker pull 923083696216.dkr.ecr.us-east-1.amazonaws.com/report-management-service:${{ github.run_number }}
             
-            docker run -d \
-              -p 3493:3493 \
-              --name report-backend \
-              -e DB_NAME=${{ secrets.DB_NAME_ }} \
-              -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
-              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-              -e DB_HOST=localhost \
-              -e DB_PORT=${{ secrets.DB_PORT }} \
+            # Run makemigrations
+            docker run --rm \
+              --network report-network \
               -e DEBUG=${{ secrets.DEBUG }} \
+              -e DJANGO_DB_HOST=report-db \
+              -e DJANGO_DB_NAME=${{ secrets.DB_NAME }} \
+              -e DJANGO_DB_USER=${{ secrets.DB_USERNAME }} \
+              -e DJANGO_DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              923083696216.dkr.ecr.us-east-1.amazonaws.com/report-management-service:${{ github.run_number }} \
+              python manage.py makemigrations
+
+            # Run migrations
+            docker run --rm \
+              --network report-network \
+              -e DEBUG=${{ secrets.DEBUG }} \
+              -e DJANGO_DB_HOST=report-db \
+              -e DJANGO_DB_NAME=${{ secrets.DB_NAME }} \
+              -e DJANGO_DB_USER=${{ secrets.DB_USERNAME }} \
+              -e DJANGO_DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              923083696216.dkr.ecr.us-east-1.amazonaws.com/report-management-service:${{ github.run_number }} \
+              python manage.py migrate
+
+            # Start the application container
+            docker run -d \
+              --name report-backend \
+              --network report-network \
+              -p 3493:3493 \
+              -e DEBUG=${{ secrets.DEBUG }} \
+              -e DJANGO_DB_HOST=report-db \
+              -e DJANGO_DB_NAME=${{ secrets.DB_NAME }} \
+              -e DJANGO_DB_USER=${{ secrets.DB_USERNAME }} \
+              -e DJANGO_DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
               923083696216.dkr.ecr.us-east-1.amazonaws.com/report-management-service:${{ github.run_number }}
           EOF

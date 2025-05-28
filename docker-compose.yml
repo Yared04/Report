@@ -10,16 +10,15 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     ports:
-      - "5432:5432"
+      - "1433:5432"
 
   app:
     build: .
-    # command: gunicorn report.wsgi:application --bind 0.0.0.0:8000
-    command: python manage.py runserver 0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:3493
     volumes:
       - .:/code
     ports:
-      - "8000:8000"
+      - "3493:3493"
     depends_on:
       - db
     environment:
