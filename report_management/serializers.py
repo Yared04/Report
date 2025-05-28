@@ -48,10 +48,11 @@ class DatabaseSerializer(serializers.ModelSerializer):
 class QuerySerializer(serializers.ModelSerializer):
     # Ensure the selected database belongs to the current organization.
     database = serializers.PrimaryKeyRelatedField(queryset=Database.objects.all())
+    type = serializers.CharField(default="file", read_only=True)
 
     class Meta:
         model = Query
-        fields = "__all__"  # Or list specific fields: ['id', 'name', 'description', 'sql_query', 'node', 'database']
+        fields = ["id", "name", "description", "sql_query", "node", "database", "type"]
         read_only_fields = ("id", "created_at", "updated_at")
 
     def validate_database(self, value):
@@ -67,62 +68,26 @@ class QuerySerializer(serializers.ModelSerializer):
             )
         return value
 
-    def validate_node(self, value):
-        """
-        Validate that the node (if provided) belongs to the same database
-        as specified in the request data for the query.
-        """
-        # 'value' here is the Node instance if a node_id is provided and valid.
-        # If node is None (optional), this validation doesn't apply.
-        if value is None:
-            return value
-
-        # Get the database_id from the initial data passed to the serializer
-        database_id = self.initial_data.get("database")
-        if database_id and value.database_id.__str__() != database_id:
-            raise serializers.ValidationError(
-                f"The selected node '{value.name}' does not belong to the specified database (ID: {database_id})."
-            )
-        return value
-
 
 # New serializer for child nodes to display them one level deep
 class NodeChildSerializer(serializers.ModelSerializer):
-    # queries = QuerySerializer(many=True, read_only=True) # Children can show their own queries
-    # database field will expect/return the ID of the database.
-    database = serializers.PrimaryKeyRelatedField(queryset=Database.objects.all())
+    type = serializers.CharField(default="folder", read_only=True)
 
     class Meta:
         model = Node
-        # No 'children' field here to prevent further recursion for this level
         fields = [
             "id",
             "name",
             "description",
             "parent",
-            "database",
+            "organization",
+            "type",  # This will always be 'folder' for Node
         ]
         read_only_fields = ("id", "created_at", "updated_at")
 
-    def validate_database(self, value):
-        """
-        Validate that the database belongs to the request's organization.
-        """
-        request = self.context.get("request")
-        if not request or not hasattr(request, "organization"):
-            raise serializers.ValidationError(
-                "Organization context not found in request."
-            )
-        if value.organization != request.organization:
-            raise serializers.ValidationError(
-                f"The selected database '{value.name}' does not belong to your organization ('{request.organization.name}')."
-            )
-        return value
-
 
 class NodeSerializer(serializers.ModelSerializer):
-    queries = QuerySerializer(many=True, read_only=True)
-    # This will now use NodeChildSerializer for the children
+    type = serializers.CharField(default="folder", read_only=True)
     children = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
@@ -133,29 +98,17 @@ class NodeSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "parent",
-            "database",
-            "queries",
+            "organization",
             "children",
+            "type",  # This will always be 'folder' for Node
         ]
         read_only_fields = ("id", "created_at", "updated_at")
 
     def get_children(self, obj):
         # Use NodeChildSerializer to serialize direct children one level deep
-        return NodeChildSerializer(
-            obj.children.all(), many=True, context=self.context
-        ).data
-
-    def validate_database(self, value):
-        """
-        Validate that the database belongs to the request's organization.
-        """
-        request = self.context.get("request")
-        if not request or not hasattr(request, "organization"):
-            raise serializers.ValidationError(
-                "Organization context not found in request."
-            )
-        if value.organization != request.organization:
-            raise serializers.ValidationError(
-                f"The selected database '{value.name}' does not belong to your organization ('{request.organization.name}')."
-            )
-        return value
+        return [
+            *NodeChildSerializer(
+                obj.children.all(), many=True, context=self.context
+            ).data,
+            *QuerySerializer(obj.queries.all(), many=True, context=self.context).data,
+        ]

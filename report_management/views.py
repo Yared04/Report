@@ -1,5 +1,5 @@
 from .authentication import APIKeyAuthentication
-from .permissions import IsOrganizationMember
+from .permissions import IsOrganizationMember, IsOrganizationAdmin
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -29,7 +29,13 @@ class DatabaseView(APIView):
     """
 
     authentication_classes = [APIKeyAuthentication]
-    permission_classes = [IsOrganizationMember]
+
+    def get_permissions(self):
+        if self.request.method in ["POST", "DELETE"]:
+            self.permission_classes = [IsOrganizationMember, IsOrganizationAdmin]
+        else:
+            self.permission_classes = [IsOrganizationMember]
+        return super().get_permissions()
 
     def get(self, request):
         """
@@ -83,6 +89,36 @@ class DatabaseView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class DatabaseDetailView(APIView):
+
+    authentication_classes = [APIKeyAuthentication]
+    permission_classes = [IsOrganizationAdmin]
+
+    def delete(self, request, pk=None):
+        """
+        Delete a database connection by its ID (pk).
+        Only allows deletion if the database belongs to the authenticated organization.
+        """
+        db_id = pk or request.data.get("id") or request.query_params.get("id")
+        if not db_id:
+            return Response(
+                {"error": "Database ID is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            database = Database.objects.get(id=db_id, organization=request.organization)
+        except Database.DoesNotExist:
+            return Response(
+                {"error": "Database not found or access denied."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        database.delete()
+        return Response(
+            {"detail": "Database deleted successfully."},
+            status=status.HTTP_204_NO_CONTENT,
+        )
+
+
 class NodeDetailView(RetrieveAPIView):
     """
     Retrieve a specific node with its direct child nodes (one level deep)
@@ -90,29 +126,81 @@ class NodeDetailView(RetrieveAPIView):
     """
 
     authentication_classes = [APIKeyAuthentication]
-    permission_classes = [IsOrganizationMember]
+
+    def get_permissions(self):
+        if self.request.method in ["POST", " DELETE", "PATCH"]:
+            self.permission_classes = [IsOrganizationMember, IsOrganizationAdmin]
+        else:
+            self.permission_classes = [IsOrganizationMember]
+        return super().get_permissions()
 
     # Optimized prefetch for the node's queries, its children, and its children's queries
     queryset = (
-        Node.objects.select_related("database")
+        Node.objects.select_related("organization")
         .prefetch_related(
             "queries",
-            "children__queries__database",
-            "children__queries",  # Also prefetch db for children's queries
+            "children__queries",
         )
         .all()
     )
     serializer_class = NodeSerializer
     lookup_field = "pk"
-    # Note: If Nodes were directly organization-scoped, this queryset would need filtering
-    # or get_object would need overriding for stricter object-level permission.
-    # The current IsOrganizationMember.has_object_permission allows Node access if general org auth is fine.
 
     def get_serializer_context(self):
         # Ensure request is passed to the serializer context
         context = super().get_serializer_context()
         context["request"] = self.request
         return context
+
+    def delete(self, request, pk=None):
+        """
+        Delete a node by its ID (pk).
+        Only allows deletion if the node belongs to the authenticated organization.
+        """
+        node_id = pk or request.data.get("id") or request.query_params.get("id")
+        if not node_id:
+            return Response(
+                {"error": "Node ID is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            node = Node.objects.get(id=node_id, organization=request.organization)
+        except Node.DoesNotExist:
+            return Response(
+                {"error": "Node not found or access denied."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        node.delete()
+        return Response(
+            {"detail": "Node deleted successfully."},
+            status=status.HTTP_204_NO_CONTENT,
+        )
+
+    def patch(self, request, pk=None):
+        """
+        Partially update a node by its ID (pk).
+        Only allows update if the node belongs to the authenticated organization.
+        """
+        node_id = pk or request.data.get("id") or request.query_params.get("id")
+        if not node_id:
+            return Response(
+                {"error": "Node ID is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            node = Node.objects.get(id=node_id, organization=request.organization)
+        except Node.DoesNotExist:
+            return Response(
+                {"error": "Node not found or access denied."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        serializer = NodeSerializer(
+            node, data=request.data, partial=True, context={"request": request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class NodeView(APIView):
@@ -121,85 +209,71 @@ class NodeView(APIView):
     """
 
     authentication_classes = [APIKeyAuthentication]
-    permission_classes = [IsOrganizationMember]
 
-    def get(self, request, database_id=None):
+    def get_permissions(self):
+        if self.request.method in ["POST"]:
+            self.permission_classes = [IsOrganizationMember, IsOrganizationAdmin]
+        else:
+            self.permission_classes = [IsOrganizationMember]
+        return super().get_permissions()
+
+    def get(self, request):
         """
         List root nodes (nodes with no parent) along with their direct children
         (one level deep) and associated queries.
         Also lists queries that are not associated with any node, scoped to the organization.
-
-        Now filters nodes and queries based on the provided database_id.
         """
 
-        if not database_id:
-            return Response(
-                {"error": "Please provide a database ID"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            database = Database.objects.get(
-                id=database_id, organization=request.organization
-            )
-        except Database.DoesNotExist:
-            return Response(
-                {
-                    "error": "Invalid database ID or database not found for your organization"
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
+        organization = request.organization
         root_nodes = (
-            Node.objects.filter(parent__isnull=True, database=database)
-            .select_related("database")
+            Node.objects.filter(parent__isnull=True, organization=organization)
+            .select_related("organization")
             .prefetch_related("queries", "children__queries")
         )
-
-        unparented_queries = Query.objects.filter(
-            node__isnull=True, database=database
+        orphaned_queries = Query.objects.filter(
+            node__isnull=True, database__organization=organization
         ).select_related("database")
 
         root_nodes_serializer = NodeSerializer(
             root_nodes, many=True, context={"request": request}
         )
-        unparented_queries_serializer = QuerySerializer(
-            unparented_queries, many=True, context={"request": request}
+
+        orphaned_queries_serializer = QuerySerializer(
+            orphaned_queries, many=True, context={"request": request}
         )
 
         data = {
-            "root_nodes": root_nodes_serializer.data,
-            "unparented_queries": unparented_queries_serializer.data,
+            "root": {
+                "id": "root",
+                "name": "Root Nodes",
+                "description": "Root nodes of the organization",
+                "type": "folder",
+                "children": [
+                    *root_nodes_serializer.data,
+                    *orphaned_queries_serializer.data,
+                ],
+            },
         }
         return Response(data)
 
-    def post(self, request, database_id=None):
+    def post(self, request):
         """
-        Create a new node.
+        Create a new node. The node is related to the organization
         """
 
-        if not database_id:
+        try:
+            organization = request.organization
+        except AttributeError:
             return Response(
-                {"error": "Please provide a database ID"},
+                {"error": "Organization not found in request context."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        try:
-            Database.objects.get(id=database_id, organization=request.organization)
-        except Database.DoesNotExist:
-            return Response(
-                {
-                    "error": "Invalid database ID or database not found for your organization"
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
         serializer = NodeSerializer(
             data={
-                **{
-                    "name": request.data.get("name"),
-                    "description": request.data.get("description"),
-                },
-                "database": database_id,
+                "name": request.data.get("name"),
+                "description": request.data.get("description"),
+                "organization": str(organization.id),
                 "parent": request.data.get("parent_id", None),
             },
             context={"request": request},
@@ -217,7 +291,7 @@ class QueryView(APIView):
     """
 
     authentication_classes = [APIKeyAuthentication]
-    permission_classes = [IsOrganizationMember]
+    permission_classes = [IsOrganizationAdmin]
 
     def post(self, request, database_id=None):
         """
@@ -243,9 +317,6 @@ class QueryView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Prepare data for the serializer
-        # The 'database' field in the serializer expects the database ID.
-        # The 'node' field (if provided) expects the node ID.
         query_data = {
             **{
                 "name": request.data.get("name"),
@@ -334,4 +405,69 @@ class QueryExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(
                 {"error": f"An unexpected error occurred: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class QueryDetailView(APIView):
+    """
+    View to retrieve, update, or delete a specific query.
+    """
+
+    authentication_classes = [APIKeyAuthentication]
+    permission_classes = [IsOrganizationAdmin]
+
+    def get(self, request, pk=None):
+        """
+        Retrieve a specific query by its ID (pk).
+        """
+        try:
+            query = Query.objects.get(
+                id=pk, database__organization=request.organization
+            )
+            serializer = QuerySerializer(query, context={"request": request})
+            return Response(serializer.data)
+        except Query.DoesNotExist:
+            return Response(
+                {"error": "Query not found or access denied."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+    def delete(self, request, pk=None):
+        """
+        Delete a specific query by its ID (pk).
+        """
+        try:
+            query = Query.objects.get(
+                id=pk, database__organization=request.organization
+            )
+            query.delete()
+            return Response(
+                {"detail": "Query deleted successfully."},
+                status=status.HTTP_204_NO_CONTENT,
+            )
+        except Query.DoesNotExist:
+            return Response(
+                {"error": "Query not found or access denied."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+    def patch(self, request, pk=None):
+        """
+        Partially update a specific query by its ID (pk).
+        """
+        try:
+            query = Query.objects.get(
+                id=pk, database__organization=request.organization
+            )
+            serializer = QuerySerializer(
+                query, data=request.data, partial=True, context={"request": request}
+            )
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Query.DoesNotExist:
+            return Response(
+                {"error": "Query not found or access denied."},
+                status=status.HTTP_404_NOT_FOUND,
             )

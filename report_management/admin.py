@@ -18,8 +18,8 @@ class DatabaseAdmin(admin.ModelAdmin):
 
 @admin.register(Node)
 class NodeAdmin(admin.ModelAdmin):
-    list_display = ("name", "description", "database", "parent")  # Fields to display
-    list_filter = ("database", "parent")  # Add filters for database
+    list_display = ("name", "description", "organization", "parent")  # Fields to display
+    list_filter = ("organization", "parent")  # Add filters for database
     search_fields = ("name", "description")  # Enable search
 
 

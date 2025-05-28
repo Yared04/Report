@@ -7,6 +7,10 @@ from django.conf import settings
 from report.models import BaseModel
 from .constants import USER_TYPE_CHOICES, USER
 
+# Helper function to generate a default salt
+def default_api_key_salt():
+    return uuid.uuid4().hex[:16]
+
 class CustomUser(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default=USER)
@@ -17,7 +21,7 @@ class Organization(BaseModel):
     """
     name = models.CharField(max_length=255, unique=True) # Added unique=True
     description = models.TextField(blank=True, null=True) # Made description optional
-    api_key_salt = models.CharField(max_length=16, editable=False, default=uuid.uuid4().hex[:16])
+    api_key_salt = models.CharField(max_length=16, editable=False, default=default_api_key_salt)
 
     def __str__(self):
         return self.name
