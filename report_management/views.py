@@ -243,16 +243,14 @@ class NodeView(APIView):
         )
 
         data = {
-            "root": {
-                "id": "root",
-                "name": "Root Nodes",
-                "description": "Root nodes of the organization",
-                "type": "folder",
-                "children": [
-                    *root_nodes_serializer.data,
-                    *orphaned_queries_serializer.data,
-                ],
-            },
+            "id": "root",
+            "name": "Root Nodes",
+            "description": "Root nodes of the organization",
+            "type": "folder",
+            "children": [
+                *root_nodes_serializer.data,
+                *orphaned_queries_serializer.data,
+            ],
         }
         return Response(data)
 
