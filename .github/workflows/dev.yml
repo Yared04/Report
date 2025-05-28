@@ -6,7 +6,7 @@ on:
       - dev
 
 env:
-  DOCKER_IMAGE: 923083696216.dkr.ecr.us-east-1.amazonaws.com/user-management-service
+  DOCKER_IMAGE: 923083696216.dkr.ecr.us-east-1.amazonaws.com/report-management-service
   ECR_REGISTRY: 923083696216.dkr.ecr.us-east-1.amazonaws.com
 
 jobs:
@@ -38,9 +38,9 @@ jobs:
 
       - name: Tag and Push to ECR
         run: |
-          docker tag 923083696216.dkr.ecr.us-east-1.amazonaws.com/user-management-service:${{ github.run_number }} $DOCKER_IMAGE:latest
-          docker push 923083696216.dkr.ecr.us-east-1.amazonaws.com/user-management-service:${{ github.run_number }}
-          docker push 923083696216.dkr.ecr.us-east-1.amazonaws.com/user-management-service:latest
+          docker tag 923083696216.dkr.ecr.us-east-1.amazonaws.com/report-management-service:${{ github.run_number }} $DOCKER_IMAGE:latest
+          docker push 923083696216.dkr.ecr.us-east-1.amazonaws.com/report-management-service:${{ github.run_number }}
+          docker push 923083696216.dkr.ecr.us-east-1.amazonaws.com/report-management-service:latest
 
   deploy:
     name: Deploy to EC2
@@ -58,10 +58,10 @@ jobs:
             
             docker rm -f report-backend || true
 
-            docker pull 923083696216.dkr.ecr.us-east-1.amazonaws.com/user-management-service:${{ github.run_number }}
+            docker pull 923083696216.dkr.ecr.us-east-1.amazonaws.com/report-management-service:${{ github.run_number }}
             
             docker run -d \
-              -p 3492:3492 \
+              -p 3493:3493 \
               --network host \
               --name report-backend \
               -e DB_NAME=${{ secrets.DB_NAME_ }} \
@@ -70,5 +70,5 @@ jobs:
               -e DB_HOST=localhost \
               -e DB_PORT=${{ secrets.DB_PORT }} \
               -e DEBUG=${{ secrets.DEBUG }} \
-              923083696216.dkr.ecr.us-east-1.amazonaws.com/user-management-service:${{ github.run_number }}
+              923083696216.dkr.ecr.us-east-1.amazonaws.com/report-management-service:${{ github.run_number }}
           EOF
