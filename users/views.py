@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import Organization, CustomUser  # Import the Organization model
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
-from .serializers import CustomUserSerializer
+from .serializers import CustomUserSerializer, OrganizationSerializer
 from rest_framework import viewsets
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
@@ -55,6 +55,14 @@ class OrganizationView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    def get(self, request):
+        """
+        List all organizations.
+        """
+        organizations = Organization.objects.all()
+        serializer = OrganizationSerializer(organizations, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 # CustomUser ViewSet
 class CustomUserViewSet(viewsets.ModelViewSet):
@@ -69,13 +77,3 @@ class CustomUserViewSet(viewsets.ModelViewSet):
 
     queryset = CustomUser.objects.all()
     serializer_class = CustomUserSerializer
-
-    # def get_permissions(self):
-    #     permissions = []
-    #     for permission in self.permission_classes:
-    #         if isinstance(permission, type):
-    #             permissions.append(permission())
-    #         else:
-    #             permissions.append(permission)
-
-    #     return permissions

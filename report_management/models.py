@@ -13,7 +13,6 @@ class Database(BaseModel):
     description = models.TextField()
     host = models.CharField(max_length=255)
     port = models.IntegerField()
-    database = models.CharField(max_length=255)
     username = models.CharField(max_length=255)
     password = models.CharField(max_length=255)
     organization = models.ForeignKey(
@@ -35,13 +34,9 @@ class Node(BaseModel):
     """
 
     name = models.CharField(max_length=255)
-    description = models.TextField()
-    database = models.ForeignKey(
-        Database,
-        on_delete=models.CASCADE,
-        related_name="nodes",
-        default=None,
-        null=True,
+    description = models.TextField(null=True, blank=True)
+    organization = models.ForeignKey(
+        "users.Organization", on_delete=models.CASCADE, related_name="nodes"
     )
     parent = models.ForeignKey(
         "self", on_delete=models.CASCADE, null=True, blank=True, related_name="children"
@@ -57,7 +52,7 @@ class Query(BaseModel):
     """
 
     name = models.CharField(max_length=255)
-    description = models.TextField()
+    description = models.TextField(null=True, blank=True)
     sql_query = models.TextField()
     node = models.ForeignKey(
         Node, null=True, blank=True, on_delete=models.CASCADE, related_name="queries"
