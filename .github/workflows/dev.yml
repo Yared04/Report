@@ -62,7 +62,6 @@ jobs:
             
             docker run -d \
               -p 3493:3493 \
-              --network host \
               --name report-backend \
               -e DB_NAME=${{ secrets.DB_NAME_ }} \
               -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
