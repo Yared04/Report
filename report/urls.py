@@ -32,6 +32,7 @@ schema_view = get_schema_view(
    ),
    public=True,
    permission_classes=(permissions.AllowAny,),
+   url='http://54.159.60.214:8809/api/' 
 )
 
 urlpatterns = [
