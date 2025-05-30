@@ -1,3 +1,4 @@
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -16,8 +17,9 @@ class OrganizationView(APIView):
     View to create a new organization and return an API key.
     """
 
-    permission_classes = [IsAdminUser]  # Changed to IsAdminUser
-
+    permission_classes = [IsAdminUser]
+    
+    @swagger_auto_schema(request_body=OrganizationSerializer)
     def post(self, request):
         org_name = request.data.get("name")
         description = request.data.get("description", "")  # Optional description
@@ -77,3 +79,20 @@ class CustomUserViewSet(viewsets.ModelViewSet):
 
     queryset = CustomUser.objects.all()
     serializer_class = CustomUserSerializer
+
+    @swagger_auto_schema(auto_schema=None)  # Hides POST /users/
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @swagger_auto_schema(auto_schema=None)  # Hides DELETE /users/<id>/
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+    @swagger_auto_schema(auto_schema=None)  # Hides PUT /users/<id>/
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    # hide put and patch methods
+    @swagger_auto_schema(auto_schema=None)  # Hides PATCH /users/<id>/
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)

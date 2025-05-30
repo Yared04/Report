@@ -17,12 +17,11 @@ from django.http import HttpResponse
 import csv
 import io
 from drf_yasg.utils import swagger_auto_schema
-
+from drf_yasg import openapi
 
 # Create your views here.
 
 
-@swagger_auto_schema(request_body=DatabaseSerializer)
 class DatabaseView(APIView):
     """
     View to manage database connections.
@@ -48,6 +47,7 @@ class DatabaseView(APIView):
         )
         return Response(serializer.data)
 
+    @swagger_auto_schema(request_body=DatabaseSerializer)
     def post(self, request):
         """
         Create a new database connection.
@@ -90,15 +90,10 @@ class DatabaseView(APIView):
 
 
 class DatabaseDetailView(APIView):
-
     authentication_classes = [APIKeyAuthentication]
     permission_classes = [IsOrganizationAdmin]
 
     def delete(self, request, pk=None):
-        """
-        Delete a database connection by its ID (pk).
-        Only allows deletion if the database belongs to the authenticated organization.
-        """
         db_id = pk or request.data.get("id") or request.query_params.get("id")
         if not db_id:
             return Response(
@@ -254,6 +249,7 @@ class NodeView(APIView):
         }
         return Response(data)
 
+    @swagger_auto_schema(request_body=NodeSerializer)
     def post(self, request):
         """
         Create a new node. The node is related to the organization
@@ -291,6 +287,7 @@ class QueryView(APIView):
     authentication_classes = [APIKeyAuthentication]
     permission_classes = [IsOrganizationAdmin]
 
+    @swagger_auto_schema(request_body=QuerySerializer)
     def post(self, request, database_id=None):
         """
         Create a new query associated with the given database_id.
@@ -449,6 +446,7 @@ class QueryDetailView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+    @swagger_auto_schema(request_body=QuerySerializer)
     def patch(self, request, pk=None):
         """
         Partially update a specific query by its ID (pk).
